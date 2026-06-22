@@ -1,31 +1,50 @@
--- palofsc: Arsenal için düzeltilmiş takım ayrımı ve raycast görünürlük denetimi
+-- palofsc: Rayfield arayüzü ile entegre edilmiş, takım ve görünürlük kontrollü AimLock
 
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
+-- Ayarlar
 local AimEnabled = false
+local VisibilityCheck = true
 
--- RaycastParams ile daha güvenilir görünürlük denetimi
+-- Rayfield Arayüzü
+local Window = Rayfield:CreateWindow({
+   Name = "Arsenal Pro",
+   LoadingTitle = "Script Yükleniyor...",
+   LoadingSubtitle = "by palofsc",
+   KeySystem = false
+})
+
+local Tab = Window:CreateTab("Combat", nil)
+
+Tab:CreateToggle({
+   Name = "AimLock",
+   CurrentValue = false,
+   Callback = function(Value) AimEnabled = Value end
+})
+
+Tab:CreateToggle({
+   Name = "Visibility Check",
+   CurrentValue = true,
+   Callback = function(Value) VisibilityCheck = Value end
+})
+
+-- Görünürlük Kontrolü
 local function isVisible(targetPart)
     local origin = Camera.CFrame.Position
     local direction = targetPart.Position - origin
-    
     local raycastParams = RaycastParams.new()
     raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, workspace.CurrentCamera}
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     
     local raycastResult = workspace:Raycast(origin, direction, raycastParams)
-    
-    if raycastResult and raycastResult.Instance then
-        -- Vurulan parça hedef karakterin bir parçası mı?
-        return raycastResult.Instance:IsDescendantOf(targetPart.Parent)
-    end
-    return false
+    return raycastResult and raycastResult.Instance:IsDescendantOf(targetPart.Parent)
 end
 
--- AimLock ana döngüsü
+-- AimLock Mantığı
 RunService.RenderStepped:Connect(function()
     if not AimEnabled then return end
     
@@ -33,16 +52,14 @@ RunService.RenderStepped:Connect(function()
     local shortestDistance = math.huge
     
     for _, player in pairs(Players:GetPlayers()) do
-        -- Takım kontrolü: 'Team' özelliği nil değilse ve takım ID'leri farklıysa
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
-            if player.Team == LocalPlayer.Team then continue end -- Aynı takımdaysa atla
+            -- Takım Kontrolü
+            if player.Team == LocalPlayer.Team then continue end
             
-            local head = player.Character.Head
+            -- Görünürlük Kontrolü
+            if VisibilityCheck and not isVisible(player.Character.Head) then continue end
             
-            -- Görünürlük kontrolü: Raycast kullanılıyor
-            if not isVisible(head) then continue end
-            
-            local pos, onScreen = Camera:WorldToViewportPoint(head.Position)
+            local pos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
             if onScreen then
                 local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
                 if distance < shortestDistance then
@@ -54,8 +71,6 @@ RunService.RenderStepped:Connect(function()
     end
     
     if closestPlayer then
-        -- Smoothing (akıcılık) eklenmiş hedefleme
-        local targetPosition = closestPlayer.Character.Head.Position
-        Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPosition)
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestPlayer.Character.Head.Position)
     end
 end)
