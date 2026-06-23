@@ -1,4 +1,4 @@
--- palofsc: Kusursuz Görünürlük ve FOV Kontrollü Orijinal AimLock
+-- palofsc: Geliştirilmiş Orijinal AimLock, Canlı Visibility Check ve Fun Modülleri
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local RunService = game:GetService("RunService")
@@ -9,13 +9,15 @@ local UserInputService = game:GetService("UserInputService")
 
 -- Ayarlar
 local AimEnabled = false
+local VisibilityCheck = true
 local EspEnabled = false
-local FovRadius = 150 -- FOV Çemberinin Büyüklüğü (Merkez)
+local RgbGunEnabled = false
+local MevlanaEnabled = false
 
 -- Rayfield Arayüzü
 local Window = Rayfield:CreateWindow({
-   Name = "Arsenal Pro",
-   LoadingTitle = "Script Yükleniyor...",
+   Name = "Arsenal Pro & Fun",
+   LoadingTitle = "Modüller Yükleniyor...",
    LoadingSubtitle = "by palofsc",
    ConfigurationSaving = { Enabled = false },
    KeySystem = false
@@ -23,21 +25,22 @@ local Window = Rayfield:CreateWindow({
 
 local Tab = Window:CreateTab("Combat", nil)
 local TabEsp = Window:CreateTab("Visuals", nil)
+local TabFun = Window:CreateTab("Fun", nil)
 
+-- Combat Sekmesi
 Tab:CreateToggle({
    Name = "AimLock",
    CurrentValue = false,
    Callback = function(Value) AimEnabled = Value end
 })
 
-Tab:CreateSlider({
-   Name = "FOV Çapı (Büyüklük)",
-   Range = {50, 400},
-   Increment = 10,
-   CurrentValue = 150,
-   Callback = function(Value) FovRadius = Value end
+Tab:CreateToggle({
+   Name = "Visibility Check (Duvar Arkası Engeli)",
+   CurrentValue = true,
+   Callback = function(Value) VisibilityCheck = Value end
 })
 
+-- Visuals (ESP) Sekmesi
 TabEsp:CreateToggle({
    Name = "Player ESP (Highlight)",
    CurrentValue = false,
@@ -53,14 +56,35 @@ TabEsp:CreateToggle({
    end
 })
 
--- Ekrana Yuvarlak (FOV Çemberi) Ekleme
-local fovCircle = Drawing.new("Circle")
-fovCircle.Thickness = 1
-fovCircle.NumSides = 60
-fovCircle.Radius = FovRadius
-fovCircle.Filled = false
-fovCircle.Color = Color3.fromRGB(255, 255, 255)
-fovCircle.Visible = false
+-- Fun Sekmesi
+TabFun:CreateSlider({
+   Name = "Karakter Görüş Açısı (FOV Changer)",
+   Range = {70, 120},
+   Increment = 5,
+   CurrentValue = 70,
+   Callback = function(Value) 
+      Camera.FieldOfView = Value 
+   end
+})
+
+TabFun:CreateToggle({
+   Name = "RGB Gun (Silah Renk Değişimi)",
+   CurrentValue = false,
+   Callback = function(Value) 
+      RgbGunEnabled = Value 
+      if not RgbGunEnabled and LocalPlayer.Character then
+         -- Silah rengini varsayılana döndürme mantığı eklenebilir
+      end
+   end
+})
+
+TabFun:CreateToggle({
+   Name = "Mevlana (Spinbot)",
+   CurrentValue = false,
+   Callback = function(Value) 
+      MevlanaEnabled = Value 
+   end
+})
 
 -- Menü Açma / Kapatma Tuşu (INSERT TUŞU)
 local isMenuVisible = true
@@ -77,31 +101,25 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- Kusursuz Duvar Arkası Kontrolü (Canlı Tarama)
+-- Güvenli ve Kararlı Duvar Arkası Tarama Fonksiyonu
 local function isVisible(targetPart, character)
     local origin = Camera.CFrame.Position
     local direction = targetPart.Position - origin
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
     
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    
-    local raycastResult = workspace:Raycast(origin, direction, raycastParams)
-    
-    if raycastResult then
-        return raycastResult.Instance:IsDescendantOf(character)
+    local result = workspace:Raycast(origin, direction, rayParams)
+    if result then
+        -- Eğer ışın doğrudan karaktere isabet ediyorsa görünüyordur
+        return result.Instance:IsDescendantOf(character)
     end
     return false
 end
 
--- RenderStepped (AimLock & ESP & FOV)
+-- RenderStepped Loop (Her karede çalışacak ana döngü)
 RunService.RenderStepped:Connect(function()
-    -- FOV Çemberini Güncelle
-    fovCircle.Radius = FovRadius
-    fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    fovCircle.Visible = AimEnabled
-
-    -- ESP Mantığı
+    -- 1. ESP Mantığı
     if EspEnabled then
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
@@ -115,43 +133,57 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- AimLock Mantığı
+    -- 2. RGB Gun (Gökkuşağı Silah) Efekti
+    if RgbGunEnabled and LocalPlayer.Character then
+        local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if tool then
+            for _, part in ipairs(tool:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.Color = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+                end
+            end
+        end
+    end
+
+    -- 3. Mevlana (Spinbot) Efekti
+    if MevlanaEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(30), 0)
+    end
+
+    -- 4. Orijinal AimLock Mantığı (Görüş açısındaki hedefe kilitlenme)
     if not AimEnabled then return end
     
     local closestPlayer = nil
-    local centerScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local shortestDistance = FovRadius 
+    local shortestDistance = math.huge
     
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
             
-            -- 1. Kendi Takımına Kilitlememe
+            -- Kendi Takımına Kilitlememe
             if player.Team == LocalPlayer.Team then continue end
             
-            -- 2. Ölüleri Hedef Almama
+            -- Ölüleri Hedef Almama
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health <= 0 then continue end
             
-            -- 3. FOV Çemberi İçi/Dışı Kontrolü (Ekran merkezine göre mesafesi)
+            -- Görünürlük (Visibility Check) Kontrolü
+            if VisibilityCheck and not isVisible(player.Character.Head, player.Character) then 
+                continue 
+            end
+            
+            -- Ekranda olma kontrolü ve merkeze olan mesafe
             local pos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
             if onScreen then
-                local mouseDistance = (Vector2.new(pos.X, pos.Y) - centerScreen).Magnitude
-                
-                -- Eğer çemberin dışındaysa bu hedefi direkt es geç
-                if mouseDistance > FovRadius then continue end
-                
-                -- 4. Görünürlük / Canlı Duvar Arkası Kesme Kontrolü
-                if not isVisible(player.Character.Head, player.Character) then continue end
-                
-                if mouseDistance < shortestDistance then
-                    shortestDistance = mouseDistance
+                local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
                     closestPlayer = player
                 end
             end
         end
     end
     
-    -- Orijinal Ekran Sabitleme (AimLock)
+    -- Hedefe Kamerayı Sabitleme
     if closestPlayer then
         Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestPlayer.Character.Head.Position)
     end
