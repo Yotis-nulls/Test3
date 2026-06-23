@@ -1,4 +1,4 @@
--- palofsc: Rayfield arayüzü ile entegre edilmiş, takım ve görünürlük kontrollü AimLock ve Menü Kısayolu
+-- palofsc: Rayfield arayüzü ile entegre edilmiş, FOV çemberli ve geliştirilmiş AimLock
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local RunService = game:GetService("RunService")
@@ -11,6 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 local AimEnabled = false
 local VisibilityCheck = true
 local EspEnabled = false
+local FovRadius = 150 -- FOV Çemberinin Büyüklüğü
 
 -- Rayfield Arayüzü
 local Window = Rayfield:CreateWindow({
@@ -25,15 +26,23 @@ local Tab = Window:CreateTab("Combat", nil)
 local TabEsp = Window:CreateTab("Visuals", nil)
 
 Tab:CreateToggle({
-   Name = "AimLock",
+   Name = "Aimbot (FOV)",
    CurrentValue = false,
    Callback = function(Value) AimEnabled = Value end
 })
 
 Tab:CreateToggle({
-   Name = "Visibility Check (Duvar Arkası Kilitlenme)",
+   Name = "Visibility Check (Duvar Kontrolü)",
    CurrentValue = true,
    Callback = function(Value) VisibilityCheck = Value end
+})
+
+Tab:CreateSlider({
+   Name = "FOV Çapı (Büyüklük)",
+   Range = {50, 400},
+   Increment = 10,
+   CurrentValue = 150,
+   Callback = function(Value) FovRadius = Value end
 })
 
 TabEsp:CreateToggle({
@@ -51,33 +60,31 @@ TabEsp:CreateToggle({
    end
 })
 
--- MENÜ AÇMA / KAPATMA TUŞU (INSERT TUŞU)
+-- Ekrana Yuvarlak (FOV Çemberi) Ekleme
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 1
+fovCircle.NumSides = 60
+fovCircle.Radius = FovRadius
+fovCircle.Filled = false
+fovCircle.Color = Color3.fromRGB(255, 255, 255)
+fovCircle.Visible = false
+
+-- Menü Açma / Kapatma Tuşu (INSERT TUŞU)
 local isMenuVisible = true
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.Insert then
         isMenuVisible = not isMenuVisible
-        
-        -- Rayfield arayüzünü gizleme / gösterme mantığı
         local coreGui = game:GetService("CoreGui")
         local rayfieldUI = coreGui:FindFirstChild("Rayfield")
-        
         if rayfieldUI then
             for _, child in ipairs(rayfieldUI:GetChildren()) do
-                if child:IsA("ScreenGui") then
-                    child.Enabled = isMenuVisible
-                end
+                if child:IsA("ScreenGui") then child.Enabled = isMenuVisible end
             end
-        end
-        
-        if isMenuVisible then
-            Rayfield:Notify({Title = "Panel", Content = "Menü açıldı.", Duration = 2})
-        else
-            Rayfield:Notify({Title = "Panel", Content = "Menü gizlendi. (INSERT ile tekrar açabilirsin)", Duration = 2})
         end
     end
 end)
 
--- Kusursuz Görünürlük / Duvar Arkası Kontrolü
+-- Duvar Arkası Kontrolü
 local function isVisible(targetPart, character)
     local origin = Camera.CFrame.Position
     local direction = targetPart.Position - origin
@@ -94,14 +101,18 @@ local function isVisible(targetPart, character)
     return false
 end
 
--- RenderStepped (AimLock & ESP)
+-- RenderStepped (AimLock & ESP & FOV)
 RunService.RenderStepped:Connect(function()
+    -- FOV Çemberini Güncelle ve Göster/Gizle
+    fovCircle.Size = FovRadius
+    fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    fovCircle.Visible = AimEnabled
+
     -- ESP Mantığı
     if EspEnabled then
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                 local isTeammate = (player.Team == LocalPlayer.Team)
-                
                 local h = player.Character:FindFirstChild("Highlight") or Instance.new("Highlight", player.Character)
                 h.Adornee = player.Character
                 h.FillColor = isTeammate and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
@@ -111,36 +122,39 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- AimLock Mantığı
+    -- Aimbot / AimLock Mantığı
     if not AimEnabled then return end
     
     local closestPlayer = nil
-    local shortestDistance = math.huge
+    local centerScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local shortestDistance = FovRadius -- Sadece dairenin içindekileri tarar
     
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
             
-            -- KENDİ TAKIMINA KİLİTLENMEYİ ÖNLEME
+            -- Kendi Takımına Kilitlememe
             if player.Team == LocalPlayer.Team then continue end
             
-            -- Ölüleri hedef alma
+            -- Ölüleri Hedef Almama
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health <= 0 then continue end
             
-            -- GÖRÜNÜRLÜK (Duvar Arkası) KONTROLÜ
+            -- Görünürlük Kontrolü (Açıksa kontrol eder, kapalıysa direkt tarar)
             if VisibilityCheck and not isVisible(player.Character.Head, player.Character) then continue end
             
             local pos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
             if onScreen then
-                local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)).Magnitude
-                if distance < shortestDistance then
-                    shortestDistance = distance
+                local mouseDistance = (Vector2.new(pos.X, pos.Y) - centerScreen).Magnitude
+                -- Dairenin (FOV) içindeyse ve daha yakınsa hedef yap
+                if mouseDistance < shortestDistance then
+                    shortestDistance = mouseDistance
                     closestPlayer = player
                 end
             end
         end
     end
     
+    -- Hedef Kilitlenmesi
     if closestPlayer then
         Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestPlayer.Character.Head.Position)
     end
