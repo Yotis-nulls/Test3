@@ -1,4 +1,4 @@
--- palofsc: Rayfield arayüzü ile entegre edilmiş, FOV çemberli ve geliştirilmiş AimLock
+-- palofsc: Rayfield arayüzü ile entegre edilmiş FOV çemberli AimLock
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local RunService = game:GetService("RunService")
@@ -9,7 +9,7 @@ local UserInputService = game:GetService("UserInputService")
 
 -- Ayarlar
 local AimEnabled = false
-local VisibilityCheck = true
+local VisibilityCheck = false -- Varsayılan olarak kapalı geldi, böylece duvar arkasını da rahat görürsün
 local EspEnabled = false
 local FovRadius = 150 -- FOV Çemberinin Büyüklüğü
 
@@ -26,14 +26,14 @@ local Tab = Window:CreateTab("Combat", nil)
 local TabEsp = Window:CreateTab("Visuals", nil)
 
 Tab:CreateToggle({
-   Name = "Aimbot (FOV)",
+   Name = "AimLock",
    CurrentValue = false,
    Callback = function(Value) AimEnabled = Value end
 })
 
 Tab:CreateToggle({
-   Name = "Visibility Check (Duvar Kontrolü)",
-   CurrentValue = true,
+   Name = "Visibility Check",
+   CurrentValue = false,
    Callback = function(Value) VisibilityCheck = Value end
 })
 
@@ -103,8 +103,8 @@ end
 
 -- RenderStepped (AimLock & ESP & FOV)
 RunService.RenderStepped:Connect(function()
-    -- FOV Çemberini Güncelle ve Göster/Gizle
-    fovCircle.Size = FovRadius
+    -- FOV Çemberini Güncelle
+    fovCircle.Radius = FovRadius
     fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     fovCircle.Visible = AimEnabled
 
@@ -122,12 +122,12 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Aimbot / AimLock Mantığı
+    -- AimLock Mantığı
     if not AimEnabled then return end
     
     local closestPlayer = nil
     local centerScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local shortestDistance = FovRadius -- Sadece dairenin içindekileri tarar
+    local shortestDistance = FovRadius -- Sadece dairenin içindeki hedeflere odaklanır
     
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
@@ -139,13 +139,12 @@ RunService.RenderStepped:Connect(function()
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health <= 0 then continue end
             
-            -- Görünürlük Kontrolü (Açıksa kontrol eder, kapalıysa direkt tarar)
+            -- Görünürlük Kontrolü
             if VisibilityCheck and not isVisible(player.Character.Head, player.Character) then continue end
             
             local pos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
             if onScreen then
                 local mouseDistance = (Vector2.new(pos.X, pos.Y) - centerScreen).Magnitude
-                -- Dairenin (FOV) içindeyse ve daha yakınsa hedef yap
                 if mouseDistance < shortestDistance then
                     shortestDistance = mouseDistance
                     closestPlayer = player
@@ -154,7 +153,7 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Hedef Kilitlenmesi
+    -- Hedefe Kilitlenme (AimLock - Ekranı sabitleme)
     if closestPlayer then
         Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestPlayer.Character.Head.Position)
     end
