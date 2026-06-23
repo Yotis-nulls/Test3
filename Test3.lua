@@ -1,4 +1,4 @@
--- palofsc: Geliştirilmiş Orijinal AimLock, Canlı Visibility Check ve Fun Modülleri
+-- palofsc: Kusursuzlaştırılmış Görünürlük ve Spinbot Entegreli AimLock
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local RunService = game:GetService("RunService")
@@ -72,9 +72,6 @@ TabFun:CreateToggle({
    CurrentValue = false,
    Callback = function(Value) 
       RgbGunEnabled = Value 
-      if not RgbGunEnabled and LocalPlayer.Character then
-         -- Silah rengini varsayılana döndürme mantığı eklenebilir
-      end
    end
 })
 
@@ -101,23 +98,27 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- Güvenli ve Kararlı Duvar Arkası Tarama Fonksiyonu
+-- Optimize Edilmiş Görünürlük Tarama Fonksiyonu
 local function isVisible(targetPart, character)
     local origin = Camera.CFrame.Position
     local direction = targetPart.Position - origin
+    
     local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
+    -- Işının kendi karakterini ve kamerayı delip geçmesi sağlanır
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character, workspace.CurrentCamera}
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.IgnoreWater = true
     
     local result = workspace:Raycast(origin, direction, rayParams)
+    
+    -- Eğer raycast hedef parçaya veya o parçanın ebeveynine (karaktere) çarparsa önü açıktır
     if result then
-        -- Eğer ışın doğrudan karaktere isabet ediyorsa görünüyordur
-        return result.Instance:IsDescendantOf(character)
+        return result.Instance:IsDescendantOf(character) or result.Instance == targetPart
     end
     return false
 end
 
--- RenderStepped Loop (Her karede çalışacak ana döngü)
+-- Ana Loop Döngüleri
 RunService.RenderStepped:Connect(function()
     -- 1. ESP Mantığı
     if EspEnabled then
@@ -145,12 +146,7 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- 3. Mevlana (Spinbot) Efekti
-    if MevlanaEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        LocalPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(30), 0)
-    end
-
-    -- 4. Orijinal AimLock Mantığı (Görüş açısındaki hedefe kilitlenme)
+    -- 3. AimLock Mantığı
     if not AimEnabled then return end
     
     local closestPlayer = nil
@@ -166,7 +162,7 @@ RunService.RenderStepped:Connect(function()
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health <= 0 then continue end
             
-            -- Görünürlük (Visibility Check) Kontrolü
+            -- Duvar arkası/Görünürlük Filtrelemesi
             if VisibilityCheck and not isVisible(player.Character.Head, player.Character) then 
                 continue 
             end
@@ -186,5 +182,14 @@ RunService.RenderStepped:Connect(function()
     -- Hedefe Kamerayı Sabitleme
     if closestPlayer then
         Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestPlayer.Character.Head.Position)
+    end
+end)
+
+-- Spinbot için engellenme yapmayan fiziksel döngü
+RunService.Stepped:Connect(function()
+    if MevlanaEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local rootPart = LocalPlayer.Character.HumanoidRootPart
+        -- Titremeyi önleyecek şekilde rotasyon açısı artırıldı
+        rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, math.rad(60), 0)
     end
 end)
